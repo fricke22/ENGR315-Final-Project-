@@ -1,0 +1,128 @@
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load only the columns needed for Question 1
+
+from pathlib import Path
+
+folder = Path(__file__).resolve().parent
+
+data = pd.read_csv(
+    folder / "export (1).csv",
+    usecols=["CRASH TIME", "NUMBER OF PERSONS KILLED"]
+)
+
+
+
+print(data.head())
+
+
+
+times = pd.to_datetime(
+    data["CRASH TIME"],
+    format="%H:%M",
+    errors="coerce"
+)
+
+data["minute"] = times.dt.hour * 60 + times.dt.minute
+
+
+data = data.dropna(subset=[
+    "minute"]).copy()
+data["minute"] = data["minute"].astype(int)
+
+
+data["fatal"] = (
+    pd.to_numeric(
+        data["NUMBER OF PERSONS KILLED"],
+        errors="coerce"
+    ).fillna(0) > 0
+)
+
+
+crashes = np.bincount(data["minute"], minlength=1440)
+
+
+fatal = np.bincount(
+    data["minute"],
+    weights=data["fatal"].astype(int),
+    minlength=1440
+)
+
+
+total_15 = np.zeros(1440)
+fatal_15 = np.zeros(1440)
+
+for i in range(15):
+    total_15 += np.roll(crashes, -i)
+    fatal_15 += np.roll(fatal, -i)
+
+
+fatal_percent = np.divide(
+    fatal_15 * 100,
+    total_15,
+    out=np.zeros(1440),
+    where=total_15 > 0
+)
+
+max_crashes = np.argmax(total_15)
+max_fatal = np.argmax(fatal_15)
+max_percent = np.argmax(fatal_percent)
+
+
+def time_label(minute):
+    hour = (minute // 60) % 24
+    minute = minute % 60
+    return f"{hour:02d}:{minute:02d}"
+
+def show_result(label, index):
+    start = time_label(index)
+    end = time_label(index + 15)
+
+    print(f"\n{label}")
+    print(f"Time: {start} to {end}")
+    print(f"Total crashes: {int(total_15[index])}")
+    print(f"Fatal crashes: {int(fatal_15[index])}")
+    print(f"Fatal crash percentage: {fatal_percent[index]:.4f}%")
+
+show_result("MOST CRASHES", max_crashes)
+show_result("MOST FATAL CRASHES", max_fatal)
+show_result("HIGHEST FATAL CRASH PERCENTAGE", max_percent)
+
+# Create graphs
+hours = np.arange(1440) / 60
+
+plt.figure(figsize=(12, 5))
+plt.plot(hours, total_15)
+plt.axvline(max_crashes / 60, color="red",
+            linestyle="--", label="Maximum")
+plt.xlabel("Time of Day (Hour)")
+plt.ylabel("Number of Crashes")
+plt.title("NYC Crashes by 15-Minute Rolling Interval")
+plt.xticks(range(0, 25, 2))
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(12, 5))
+plt.plot(hours, fatal_15, color="darkred")
+plt.xlabel("Time of Day (Hour)")
+plt.ylabel("Number of Fatal Crashes")
+plt.title("NYC Fatal Crashes by 15-Minute Rolling Interval")
+plt.xticks(range(0, 25, 2))
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(12, 5))
+plt.plot(hours, fatal_percent, color="purple")
+plt.xlabel("Time of Day (Hour)")
+plt.ylabel("Fatal Crashes (%)")
+plt.title("Percentage of Crashes That Were Fatal")
+plt.xticks(range(0, 25, 2))
+plt.grid(True)
+plt.tight_layout()
+plt.show()

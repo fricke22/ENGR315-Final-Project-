@@ -3,12 +3,11 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Load only the columns needed for Question 1
 
 from pathlib import Path
 
 folder = Path(__file__).resolve().parent
-
+#load data 
 data = pd.read_csv(
     folder / "export (1).csv",
     usecols=["CRASH TIME", "NUMBER OF PERSONS KILLED"]
@@ -16,24 +15,22 @@ data = pd.read_csv(
 
 
 
-print(data.head())
-
-
-
+#convert time to datetime 
 times = pd.to_datetime(
     data["CRASH TIME"],
     format="%H:%M",
     errors="coerce"
 )
 
+#converts times into minutes elapsed after midngiht 
 data["minute"] = times.dt.hour * 60 + times.dt.minute
 
-
+#dumps values that do not feature a time 
 data = data.dropna(subset=[
     "minute"]).copy()
 data["minute"] = data["minute"].astype(int)
 
-
+#Identifies which crashes are fatal
 data["fatal"] = (
     pd.to_numeric(
         data["NUMBER OF PERSONS KILLED"],
@@ -41,7 +38,7 @@ data["fatal"] = (
     ).fillna(0) > 0
 )
 
-
+#create 1440 bins, one for each unique 15 minute interval 
 crashes = np.bincount(data["minute"], minlength=1440)
 
 
@@ -51,10 +48,10 @@ fatal = np.bincount(
     minlength=1440
 )
 
-
+#array to store crash total 
 total_15 = np.zeros(1440)
 fatal_15 = np.zeros(1440)
-
+# calculate number of crash in each 15 minute interval using the np.roll shift 
 for i in range(15):
     total_15 += np.roll(crashes, -i)
     fatal_15 += np.roll(fatal, -i)
@@ -66,12 +63,12 @@ fatal_percent = np.divide(
     out=np.zeros(1440),
     where=total_15 > 0
 )
-
+#np.argmax finds interval with largest value 
 max_crashes = np.argmax(total_15)
 max_fatal = np.argmax(fatal_15)
 max_percent = np.argmax(fatal_percent)
 
-
+#go back into HHMM format
 def time_label(minute):
     hour = (minute // 60) % 24
     minute = minute % 60

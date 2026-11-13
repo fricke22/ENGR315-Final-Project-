@@ -64,8 +64,29 @@ What type of plot or visualization would be helpful?
 Line graph showing cyclists deaths and injuries over a period of time in different locations 
 
 RESULTS:
+Question 1:
+Using a 15 minute rolling window method. We loaded the data and used Numpy to calculate crash frequences and perform data anylsis, and used matplotlib to graph the results. We converted the crash times in minutes after midnight to perform the anaylsis, and for each minute we calculated a unique window, resulting in 1,440 different 15 minute aerages. as well as calculating a percentage of the crashes that were fatal. 
+The results from question 1 are as followed
+MOST CRASHES
+Time: 16:46 to 17:01
+Total crashes: 53134
+Fatal crashes: 39
+Fatal crash percentage: 0.0734%
 
+MOST FATAL CRASHES
+Time: 18:37 to 18:52
+Total crashes: 30661
+Fatal crashes: 62
+Fatal crash percentage: 0.2022%
+
+HIGHEST FATAL CRASH PERCENTAGE
+Time: 04:05 to 04:20
+Total crashes: 6334
+Fatal crashes: 53
+Fatal crash percentage: 0.8368%
 CONCLUSIONS : 
+Question 1:
+The results show that time of day was the contributing factor towards the amount of crashes, the greatest amount of crashes occured during a high traffic time, during the afternoon rush hour. We can alsao see that the most fatal crashes occured in the evening, which makes sense due to high amounts of traffic plus potentally people running late. The greatest percentage however occured in the early morning around 4am, potentially being realted to drunk driving. 
 
 ACTIONS THAT NEED TO BE COMPLETED:
 

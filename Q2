@@ -1,0 +1,197 @@
+
+"""
+Question 2: Intersection crash counts normalized by annual average daily traffic.
+"""
+
+# Import libraries for file paths, data analysis, and plotting
+from pathlib import Path
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Identify the folder containing this Python script
+BASE = Path(__file__).resolve().parent
+
+# Load the NYC collision dataset from the data folder in the GitHub repository
+DATA = BASE / 'data' / 'Motor_Vehicle_Collisions.csv'
+
+# Set the location of the average daily traffic dataset
+ADT_FILE = BASE / 'data' / 'traffic_data.csv'
+
+# Set the folder where generated graphs will be saved
+OUT = BASE / 'figures'
+
+# Create the figures folder if it does not already exist
+OUT.mkdir(exist_ok=True)
+
+# Check that the collision dataset exists before running the analysis
+if not DATA.exists():
+    raise FileNotFoundError(
+        f"Dataset not found at: {DATA}\n"
+        "Place Motor_Vehicle_Collisions.csv inside the data folder."
+    )
+
+# Print the dataset location to confirm it was found
+print("Dataset found:", DATA)
+
+# Define a function to standardize street names for accurate comparisons
+def normalize(s):
+    # Make street names consistent by removing extra spaces and capitalizing text
+    return s.astype('string').str.upper().str.strip().str.replace(r'\s+', ' ', regex=True)
+
+# Define the main function to perform the analysis
+def main():
+
+    # Identify the columns needed from the crash dataset
+    cols = {'BOROUGH', 'ON STREET NAME', 'CROSS STREET NAME', 'CRASH DATE'}
+
+    # Load only the required columns to reduce memory usage
+    df = pd.read_csv(DATA, usecols=lambda c: c.upper().strip() in cols, low_memory=False)
+
+    # Make all column names uppercase and remove extra spaces
+    df.columns = df.columns.str.upper().str.strip()
+
+    # Check that all required columns are present
+    if not cols.issubset(df.columns):
+        raise ValueError(f'Missing crash columns: {cols - set(df.columns)}')
+
+    # Standardize borough and street names for accurate comparisons
+    for c in ['BOROUGH', 'ON STREET NAME', 'CROSS STREET NAME']:
+        df[c] = normalize(df[c])
+
+    # Convert crash dates into datetime format
+    df['CRASH DATE'] = pd.to_datetime(df['CRASH DATE'], errors='coerce')
+
+    # Remove rows missing important location or date information
+    df = df.dropna(subset=['BOROUGH', 'ON STREET NAME', 'CROSS STREET NAME', 'CRASH DATE'])
+
+    # Organize intersection street names to prevent counting the same intersection twice
+    a = df['ON STREET NAME'].copy()
+    b = df['CROSS STREET NAME'].copy()
+
+    # Determine whether the street names need to be swapped alphabetically
+    swap = a > b
+
+    # Assign consistent names to the two streets at each intersection
+    df['STREET_A'] = a.where(~swap, b)
+    df['STREET_B'] = b.where(~swap, a)
+
+    # Remove records where both street names are identical
+    df = df[df['STREET_A'] != df['STREET_B']]
+
+    # Group crashes by borough and intersection, then count the number of crashes
+    counts = df.groupby(['BOROUGH', 'STREET_A', 'STREET_B']).size().rename('CRASHES').reset_index()
+
+    # Print the total number of intersections identified
+    print(f'Intersections with usable crash records: {len(counts):,}')
+
+    # Print the 10 intersections with the highest number of crashes
+    print('\nTop 10 intersections by crash count (not traffic-normalized):')
+    print(counts.nlargest(10, 'CRASHES').to_string(index=False))
+
+    # Check whether the additional average daily traffic dataset exists
+    if not ADT_FILE.exists():
+        print('\nADT file missing: add data/traffic_data.csv to calculate traffic-normalized rates.')
+        print('Required columns: BOROUGH, ON STREET NAME, CROSS STREET NAME, ADT')
+        return
+
+    # Load the average daily traffic dataset
+    traffic = pd.read_csv(ADT_FILE)
+
+    # Standardize the ADT column names
+    traffic.columns = traffic.columns.str.upper().str.strip()
+
+    # Identify required columns in the ADT dataset
+    required = {'BOROUGH', 'ON STREET NAME', 'CROSS STREET NAME', 'ADT'}
+
+    # Check that all necessary ADT columns are present
+    if not required.issubset(traffic.columns):
+        raise ValueError(f'Missing ADT columns: {required - set(traffic.columns)}')
+
+    # Standardize borough and street names in the traffic dataset
+    for c in ['BOROUGH', 'ON STREET NAME', 'CROSS STREET NAME']:
+        traffic[c] = normalize(traffic[c])
+
+    # Organize ADT intersection names in the same order as the crash dataset
+    a = traffic['ON STREET NAME'].copy()
+    b = traffic['CROSS STREET NAME'].copy()
+    swap = a > b
+
+    # Assign consistent street names for matching intersections
+    traffic['STREET_A'] = a.where(~swap, b)
+    traffic['STREET_B'] = b.where(~swap, a)
+
+    # Convert ADT values into numbers and remove invalid values
+    traffic['ADT'] = pd.to_numeric(traffic['ADT'], errors='coerce')
+    traffic = traffic.dropna(subset=['ADT'])
+
+    # Keep only intersections with positive traffic volumes
+    traffic = traffic[traffic['ADT'] > 0]
+
+    # Identify the columns used to match intersections between datasets
+    keys = ['BOROUGH', 'STREET_A', 'STREET_B']
+
+    # Check for duplicate intersections in the ADT dataset
+    if traffic.duplicated(keys).any():
+        raise ValueError('ADT data has duplicate intersection keys; resolve them before analysis.')
+
+    # Combine crash counts with matching average daily traffic values
+    merged = counts.merge(traffic[keys + ['ADT']], on=keys, how='inner', validate='one_to_one')
+
+    # Stop if no matching intersections were found
+    if merged.empty:
+        print('No matching ADT intersections; check street naming and coverage.')
+        return
+
+    # Calculate the approximate number of years covered by the crash dataset
+    # The ADT should represent the same time period for an accurate comparison
+    years = (df['CRASH DATE'].max() - df['CRASH DATE'].min()).days / 365.25
+
+    # Make sure the dataset covers more than one day
+    if years <= 0:
+        raise ValueError('Study period must span multiple days.')
+
+    # Calculate crashes per million estimated vehicles using crash counts and ADT
+    merged['CRASHES_PER_MILLION_VEHICLES'] = merged['CRASHES'] / (merged['ADT'] * years * 365.25) * 1_000_000
+
+    # Select the 10 intersections with the highest traffic-normalized crash frequency
+    top = merged.nlargest(10, 'CRASHES_PER_MILLION_VEHICLES').copy()
+
+    # Print the study duration and number of intersections matched to ADT
+    print(f'\nApproximate study duration: {years:.2f} years')
+    print(f'Intersections matched to ADT: {len(merged):,}')
+
+    # Print the top 10 intersections ranked by crashes per million vehicles
+    print('\nTop 10 by crashes per million estimated vehicles:')
+    print(top.to_string(index=False, float_format=lambda x: f'{x:.3f}'))
+
+    # Create labels combining street names and boroughs for the graph
+    labels = top['STREET_A'] + ' / ' + top['STREET_B'] + ' (' + top['BOROUGH'] + ')'
+
+    # Create a horizontal bar chart to compare the top 10 intersections
+    fig, ax = plt.subplots(figsize=(12, 7))
+    ax.barh(labels.iloc[::-1], top['CRASHES_PER_MILLION_VEHICLES'].iloc[::-1])
+
+    # Add the x-axis label and graph title
+    ax.set_xlabel('Crashes per million estimated vehicles')
+    ax.set_title('Top 10 NYC intersections by traffic-normalized crash frequency')
+
+    # Add grid lines to make the graph easier to read
+    ax.grid(axis='x', alpha=0.25)
+
+    # Adjust the graph layout to prevent labels from being cut off
+    fig.tight_layout()
+
+    # Save the graph to the figures folder
+    fig.savefig(OUT / 'question2_intersections.png', dpi=180)
+
+    # Display the graph
+    plt.show()
+
+    # Print limitations of the traffic-normalized crash calculations
+    print('\nCaution: this is an approximate exposure measure, not a validated intersection crash rate.')
+    print('ADT should cover the same dates and all entering approaches; verify street matches.')
+
+
+# Run the main function when this script is executed
+if __name__ == '__main__':
+    main()
